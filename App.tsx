@@ -4,7 +4,7 @@ import OfferHeader from './components/OfferHeader';
 import OfferInfo from './components/OfferInfo';
 import ItemsTable from './components/ItemsTable/ItemsTable';
 import SupplierRatesModal from './components/Modals/SupplierRatesModal';
-import { Check, AlertTriangle, RefreshCw, ExternalLink, Settings } from 'lucide-react';
+import { Check, AlertTriangle, RefreshCw, Settings, FileText } from 'lucide-react';
 
 const SetupGuide: React.FC<{ error: string, onRetry: () => void }> = ({ error, onRetry }) => (
   <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
@@ -73,12 +73,39 @@ const SetupGuide: React.FC<{ error: string, onRetry: () => void }> = ({ error, o
 );
 
 const MainLayout: React.FC = () => {
-  const { saveOffer, loading, error, loadOffer } = useOffer();
+  const { saveOffer, loading, error, offer } = useOffer();
   const [showRates, setShowRates] = useState(false);
 
   // If initial load failed specifically with network error
   if (!loading && error && (error.includes('Failed to fetch') || error.includes('CORS'))) {
       return <SetupGuide error={error} onRetry={() => window.location.reload()} />;
+  }
+
+  // Handle case where API is connected but no offer was loaded (e.g. invalid or missing ID)
+  if (!loading && !error && !offer) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col">
+         <OfferHeader onOpenRates={() => setShowRates(true)} />
+         <div className="flex-1 flex flex-col items-center justify-center p-4">
+             <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center max-w-md animate-in slide-in-from-bottom-5">
+                <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
+                    <FileText className="w-8 h-8" />
+                </div>
+                <h2 className="text-xl font-bold text-slate-800 mb-2">No Offer Loaded</h2>
+                <p className="text-slate-500 mb-6">
+                    We couldn't find an offer to display. This usually means the <b>Offer ID</b> is missing or incorrect.
+                </p>
+                <div className="text-left bg-blue-50 p-4 rounded-lg border border-blue-100 mb-4">
+                    <p className="text-xs font-bold text-blue-600 uppercase mb-1">Try this URL format:</p>
+                    <code className="text-xs text-blue-800 font-mono break-all">
+                        {window.location.origin}{window.location.pathname}?id=YOUR_OFFER_ID
+                    </code>
+                </div>
+             </div>
+         </div>
+         {showRates && <SupplierRatesModal onClose={() => setShowRates(false)} />}
+      </div>
+    );
   }
 
   return (
@@ -112,8 +139,22 @@ const MainLayout: React.FC = () => {
 };
 
 const App: React.FC = () => {
-  const urlParams = new URLSearchParams(window.location.search);
-  const offerId = urlParams.get('id') || undefined;
+  // Robust ID extraction from URL
+  const getOfferId = () => {
+    const params = new URLSearchParams(window.location.search);
+    const idFromSearch = params.get('id');
+    if (idFromSearch) return idFromSearch;
+    
+    // Fallback for hash router if needed
+    if (window.location.hash.includes('?')) {
+        const hashParams = new URLSearchParams(window.location.hash.split('?')[1]);
+        return hashParams.get('id');
+    }
+    
+    return undefined;
+  };
+
+  const offerId = getOfferId();
 
   return (
     <OfferProvider initialOfferId={offerId}>

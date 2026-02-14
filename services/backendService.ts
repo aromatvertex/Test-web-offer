@@ -5,11 +5,12 @@ import {
   OfferItem,
   SupplierRates,
   AppData,
-  Config
+  Config,
+  Offer
 } from '../types';
 
 // The live API URL provided
-const API_URL = 'https://script.google.com/macros/s/AKfycbwUBSR4u7TmbJFjfTq0bgt3XLBGUV3HEiwJyXHE498XnV91lQlUmu0Lg_L8O4q0z8TGYQ/exec';
+const API_URL = process.env.REACT_APP_GAS_API_URL || 'https://script.google.com/macros/s/AKfycbyd1iODLL77qgnIlj6dSvEMk0Of7XgXkuCo5a1Vdi-2X5IBPrTraAkbPcpJDpMptX6JWg/exec';
 
 class BackendService {
   
@@ -102,6 +103,40 @@ class BackendService {
         data: null
       };
     }
+  }
+
+  async getOffers(): Promise<Offer[]> {
+    try {
+      const url = new URL(API_URL);
+      url.searchParams.append('action', 'getOffers');
+      url.searchParams.append('_cb', Date.now().toString());
+
+      const response = await this.handleFetch(url.toString(), {
+        method: 'GET',
+        mode: 'cors',
+        credentials: 'omit',
+        redirect: 'follow'
+      });
+
+      const json: BackendResponse<{ offers: Offer[] }> = await response.json();
+      if (json.success && json.data?.offers) {
+        return json.data.offers;
+      }
+      return [];
+    } catch (error) {
+      console.error('Get Offers Failed:', error);
+      return [];
+    }
+  }
+
+  async createOffer(subject: string, customer: string): Promise<BackendResponse<{ id: string }>> {
+    // Explicitly casting to any to bypass strict type checking for new method
+    // In a real project, we would update ApiRequest type to include CreateOfferRequest
+    return this.request<{ id: string }>({
+      operation: 'create_offer',
+      subject,
+      customer
+    } as any);
   }
 
   async addProductToOffer(offerId: string, productId: string): Promise<BackendResponse<OfferItem[]>> {
