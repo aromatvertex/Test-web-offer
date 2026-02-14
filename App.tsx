@@ -4,7 +4,7 @@ import OfferHeader from './components/OfferHeader';
 import OfferInfo from './components/OfferInfo';
 import ItemsTable from './components/ItemsTable/ItemsTable';
 import SupplierRatesModal from './components/Modals/SupplierRatesModal';
-import { Check, AlertTriangle, RefreshCw, Settings, FileText } from 'lucide-react';
+import { Check, AlertTriangle, RefreshCw, Settings, FileText, Search } from 'lucide-react';
 
 const SetupGuide: React.FC<{ error: string, onRetry: () => void }> = ({ error, onRetry }) => (
   <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
@@ -73,8 +73,9 @@ const SetupGuide: React.FC<{ error: string, onRetry: () => void }> = ({ error, o
 );
 
 const MainLayout: React.FC = () => {
-  const { saveOffer, loading, error, offer } = useOffer();
+  const { saveOffer, loading, error, offer, loadOffer } = useOffer();
   const [showRates, setShowRates] = useState(false);
+  const [manualId, setManualId] = useState('');
 
   // If initial load failed specifically with network error
   if (!loading && error && (error.includes('Failed to fetch') || error.includes('CORS'))) {
@@ -87,19 +88,42 @@ const MainLayout: React.FC = () => {
       <div className="min-h-screen bg-slate-50 flex flex-col">
          <OfferHeader onOpenRates={() => setShowRates(true)} />
          <div className="flex-1 flex flex-col items-center justify-center p-4">
-             <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center max-w-md animate-in slide-in-from-bottom-5">
+             <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center max-w-md animate-in slide-in-from-bottom-5 w-full">
                 <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
                     <FileText className="w-8 h-8" />
                 </div>
                 <h2 className="text-xl font-bold text-slate-800 mb-2">No Offer Loaded</h2>
-                <p className="text-slate-500 mb-6">
-                    We couldn't find an offer to display. This usually means the <b>Offer ID</b> is missing or incorrect.
+                <p className="text-slate-500 mb-6 text-sm">
+                    The Offer ID was not found in the URL. This happens in preview mode. Please enter the ID manually below.
                 </p>
-                <div className="text-left bg-blue-50 p-4 rounded-lg border border-blue-100 mb-4">
-                    <p className="text-xs font-bold text-blue-600 uppercase mb-1">Try this URL format:</p>
-                    <code className="text-xs text-blue-800 font-mono break-all">
-                        {window.location.origin}{window.location.pathname}?id=YOUR_OFFER_ID
+                
+                <div className="mb-6 p-2 bg-slate-100 rounded border border-slate-200 text-left">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Current App Location:</p>
+                    <code className="text-[10px] text-slate-600 font-mono break-all block">
+                        {window.location.href}
                     </code>
+                </div>
+                
+                <div className="text-left">
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Offer ID</label>
+                    <div className="flex gap-2">
+                        <input 
+                            type="text" 
+                            value={manualId}
+                            onChange={(e) => setManualId(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && manualId && loadOffer(manualId)}
+                            placeholder="e.g. OFE7503"
+                            className="flex-1 px-4 py-3 bg-slate-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-av-blue focus:bg-white transition-all font-medium text-slate-800"
+                        />
+                        <button 
+                            onClick={() => loadOffer(manualId)}
+                            disabled={!manualId}
+                            className="px-6 py-3 bg-av-blue text-white font-bold rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm flex items-center gap-2"
+                        >
+                            <Search className="w-4 h-4" />
+                            Load
+                        </button>
+                    </div>
                 </div>
              </div>
          </div>
@@ -141,14 +165,18 @@ const MainLayout: React.FC = () => {
 const App: React.FC = () => {
   // Robust ID extraction from URL
   const getOfferId = () => {
-    const params = new URLSearchParams(window.location.search);
-    const idFromSearch = params.get('id');
-    if (idFromSearch) return idFromSearch;
-    
-    // Fallback for hash router if needed
-    if (window.location.hash.includes('?')) {
-        const hashParams = new URLSearchParams(window.location.hash.split('?')[1]);
-        return hashParams.get('id');
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const idFromSearch = params.get('id');
+        if (idFromSearch) return idFromSearch;
+        
+        // Fallback for hash router if needed
+        if (window.location.hash.includes('?')) {
+            const hashParams = new URLSearchParams(window.location.hash.split('?')[1]);
+            return hashParams.get('id');
+        }
+    } catch (e) {
+        console.warn("Could not parse URL for ID");
     }
     
     return undefined;
