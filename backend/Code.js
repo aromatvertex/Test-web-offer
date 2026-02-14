@@ -1,8 +1,8 @@
 // --- CONFIGURATION ---
-const SPREADSHEET_ID = 'YOUR_SPREADSHEET_ID_HERE'; // <--- IMPORTANT: PASTE YOUR SPREADSHEET ID HERE
+// ⚠️ IMPORTANT: Replace this ID with your actual Google Sheet ID
+const SPREADSHEET_ID = 'YOUR_SPREADSHEET_ID_HERE'; 
 
 // --- MAPPINGS ---
-// Maps frontend snake_case fields to Sheet Headers
 const FIELD_MAP = {
   'markup': 'Markup %',
   'selling_currency': 'Selling Currency',
@@ -16,34 +16,53 @@ const FIELD_MAP = {
 // --- MAIN ENTRY POINTS ---
 
 function doGet(e) {
-  return handleApiRequest(e, 'GET');
+  try {
+    // Safety check for e
+    if (!e) e = { parameter: {} };
+
+    // Check Config
+    if (!SPREADSHEET_ID || SPREADSHEET_ID === 'YOUR_SPREADSHEET_ID_HERE') {
+      return createResponse(false, 'SETUP_REQUIRED: Please replace SPREADSHEET_ID in Code.gs with your actual Google Sheet ID.', null);
+    }
+
+    return handleApiRequest(e, 'GET');
+  } catch (err) {
+    // Catch-all for any unexpected errors
+    return createResponse(false, 'SERVER_ERROR: ' + err.toString(), null);
+  }
 }
 
 function doPost(e) {
-  return handleApiRequest(e, 'POST');
+  try {
+     // Safety check for e
+    if (!e) e = { postData: { contents: '{}' } };
+
+    if (!SPREADSHEET_ID || SPREADSHEET_ID === 'YOUR_SPREADSHEET_ID_HERE') {
+      return createResponse(false, 'SETUP_REQUIRED: Please replace SPREADSHEET_ID in Code.gs with your actual Google Sheet ID.', null);
+    }
+
+    return handleApiRequest(e, 'POST');
+  } catch (err) {
+    // Catch-all for any unexpected errors
+    return createResponse(false, 'SERVER_ERROR: ' + err.toString(), null);
+  }
 }
 
 function doOptions(e) {
   // CORS Preflight
-  return ContentService.createTextOutput(JSON.stringify({ success: true }))
-    .setMimeType(ContentService.MimeType.JSON);
+  return ContentService.createTextOutput('')
+    .setMimeType(ContentService.MimeType.TEXT);
 }
 
 // --- API CORE ---
 
 function handleApiRequest(e, method) {
-  // 1. Safety Check for Configuration
-  if (SPREADSHEET_ID === 'YOUR_SPREADSHEET_ID_HERE') {
-    return createResponse(false, 'Configuration Error: SPREADSHEET_ID is not set in Google Apps Script.', null);
-  }
-
+  // Lock to prevent race conditions
   const lock = LockService.getScriptLock();
   
-  // Use a shorter lock for GET (reads) and longer for POST (writes)
-  const waitTime = method === 'POST' ? 30000 : 5000;
-  
-  if (!lock.tryLock(waitTime)) {
-    return createResponse(false, 'Server is busy, please try again.', null);
+  // Wait up to 10 seconds for other processes to finish
+  if (!lock.tryLock(10000)) {
+    return createResponse(false, 'Server busy (Lock timeout). Try again.', null);
   }
 
   try {
@@ -51,24 +70,23 @@ function handleApiRequest(e, method) {
     let message = 'Success';
 
     if (method === 'GET') {
-      const action = e.parameter.action;
-      const id = e.parameter.id;
+      const action = e.parameter ? e.parameter.action : null;
+      const id = e.parameter ? e.parameter.id : null;
 
       if (action === 'getCRMData') {
         responseData = { supplierRates: getStoredSupplierRates() };
       } else if (id) {
         responseData = getOfferData(id);
       } else {
-        message = 'Vertex CRM API Online';
-        responseData = { status: 'ok' };
+        message = 'Vertex CRM API Ready';
+        responseData = { status: 'connected', sheetId: SPREADSHEET_ID };
       }
     } else if (method === 'POST') {
-      // Robust JSON parsing
       let postData;
       try {
         postData = JSON.parse(e.postData.contents);
       } catch (jsonErr) {
-        throw new Error('Invalid JSON payload');
+        throw new Error('Invalid JSON Body in Request');
       }
       
       if (postData.action === 'saveSupplierRates') {
@@ -78,14 +96,14 @@ function handleApiRequest(e, method) {
         responseData = handleOperation(postData);
         message = 'Operation Successful';
       } else {
-        throw new Error('Invalid payload: Missing operation or action');
+        throw new Error('Missing operation in payload');
       }
     }
 
     return createResponse(true, message, responseData);
 
   } catch (err) {
-    Logger.log('API Error: ' + err.toString());
+    Logger.log('Logic Error: ' + err.toString());
     return createResponse(false, err.toString(), null);
   } finally {
     lock.releaseLock();
@@ -93,11 +111,13 @@ function handleApiRequest(e, method) {
 }
 
 function createResponse(success, message, data) {
-  return ContentService.createTextOutput(JSON.stringify({
+  const payload = {
     success: success,
     message: message,
     data: data
-  })).setMimeType(ContentService.MimeType.JSON);
+  };
+  return ContentService.createTextOutput(JSON.stringify(payload))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 // --- OPERATIONS DISPATCHER ---
@@ -125,7 +145,7 @@ function getSheet(name) {
     if (!sheet) throw new Error('Sheet not found: ' + name);
     return sheet;
   } catch (e) {
-    throw new Error('Database Error: ' + e.message);
+    throw new Error('Database Access Error: ' + e.message + '. Check SPREADSHEET_ID.');
   }
 }
 
@@ -143,7 +163,7 @@ function getColumnMap(sheet) {
 function getDataWithHeaders(sheetName) {
   const sheet = getSheet(sheetName);
   const data = sheet.getDataRange().getValues();
-  if (data.length < 2) return []; // Only headers or empty
+  if (data.length < 2) return []; 
 
   const headers = data[0];
   const rows = data.slice(1);
@@ -156,20 +176,31 @@ function getDataWithHeaders(sheetName) {
 }
 
 function getOfferData(offerId) {
-  const offer = getDataWithHeaders('Offers').find(o => o['Offer ID'] === offerId);
-  const items = getDataWithHeaders('OfferItems').filter(i => i['Offer ID'] === offerId);
-  const products = getDataWithHeaders('Products');
-  const suppliers = getDataWithHeaders('Suppliers');
-  const config = getDataWithHeaders('Config');
+  try {
+    const offers = getDataWithHeaders('Offers');
+    const allItems = getDataWithHeaders('OfferItems');
+    const products = getDataWithHeaders('Products');
+    const suppliers = getDataWithHeaders('Suppliers');
+    const config = getDataWithHeaders('Config');
 
-  return {
-    offer: offer || null,
-    items: items || [],
-    products: products || [],
-    suppliers: suppliers || [],
-    config: config || [],
-    transportCosts: []
-  };
+    const offer = offers.find(o => o['Offer ID'] === offerId);
+    const items = allItems.filter(i => i['Offer ID'] === offerId);
+
+    return {
+      offer: offer || null,
+      items: items || [],
+      products: products || [],
+      suppliers: suppliers || [],
+      config: config || [],
+      transportCosts: []
+    };
+  } catch (e) {
+    // Return empty structures instead of failing completely if sheets are missing
+    Logger.log('Error getting data: ' + e);
+    return {
+      offer: null, items: [], products: [], suppliers: [], config: [], transportCosts: []
+    };
+  }
 }
 
 // --- CRUD IMPLEMENTATION ---
@@ -179,7 +210,6 @@ function addProduct(p) {
   const headers = getHeaders(sheet);
   const colMap = getColumnMap(sheet);
   
-  // Create 3 default tiers: 25, 100, 500
   const tiers = [25, 100, 500];
   const newItems = [];
 
@@ -187,19 +217,18 @@ function addProduct(p) {
     const newId = Utilities.getUuid();
     const row = new Array(headers.length).fill('');
     
-    // Fill known columns
+    // Map data to columns based on header name
     if (colMap['Offer Item ID']) row[colMap['Offer Item ID'] - 1] = newId;
     if (colMap['Offer ID']) row[colMap['Offer ID'] - 1] = p.offer_id;
     if (colMap['Product ID']) row[colMap['Product ID'] - 1] = p.product_id;
     if (colMap['Quantity Unit From']) row[colMap['Quantity Unit From'] - 1] = qty;
     if (colMap['Actual Quantity']) row[colMap['Actual Quantity'] - 1] = qty;
     
-    // Defaults
     if (colMap['Unit']) row[colMap['Unit'] - 1] = 'kg';
     if (colMap['Number Ships']) row[colMap['Number Ships'] - 1] = 1;
     if (colMap['Purchase Currency']) row[colMap['Purchase Currency'] - 1] = 'EUR';
     if (colMap['Selling Currency']) row[colMap['Selling Currency'] - 1] = 'EUR';
-    if (colMap['Purchase Price']) row[colMap['Purchase Price'] - 1] = 0; // Default price
+    if (colMap['Purchase Price']) row[colMap['Purchase Price'] - 1] = 0; 
     if (colMap['Included']) row[colMap['Included'] - 1] = true;
     if (colMap['Markup %']) row[colMap['Markup %'] - 1] = 0.15;
     if (colMap['Incoterms Supplier']) row[colMap['Incoterms Supplier'] - 1] = 'DAP';
@@ -209,7 +238,7 @@ function addProduct(p) {
 
     sheet.appendRow(row);
 
-    // Construct item object to return
+    // Return the created item structure
     const itemObj = {};
     headers.forEach((h, i) => itemObj[h] = row[i]);
     newItems.push(itemObj);
@@ -226,18 +255,16 @@ function updateItem(p) {
   
   if (idColIdx === -1) throw new Error('ID Column not found');
 
-  // Find row (scan backwards for optimization as recent items are at bottom)
   let rowIdx = -1;
   for (let i = data.length - 1; i >= 1; i--) {
     if (data[i][idColIdx] == p.offer_item_id) {
-      rowIdx = i + 1; // 1-based index
+      rowIdx = i + 1; 
       break;
     }
   }
 
   if (rowIdx === -1) throw new Error('Item not found');
 
-  // Update fields
   const colMap = getColumnMap(sheet);
   const updates = p.fields;
   
@@ -281,12 +308,9 @@ function duplicateItem(p) {
       const newRow = [...sourceRow];
       const newId = Utilities.getUuid();
       
-      // Update ID
       newRow[idColIdx] = newId;
       
-      // Apply overrides if any (e.g., specific fields)
       if (p.overrides) {
-        // Logic to apply overrides based on headers
         for (const [key, val] of Object.entries(p.overrides)) {
           const colIdx = headers.indexOf(key);
           if (colIdx > -1) newRow[colIdx] = val;
@@ -312,7 +336,7 @@ function deleteItem(p) {
       return { success: true };
     }
   }
-  return { success: false, message: 'Item not found (already deleted?)' };
+  return { success: false, message: 'Item not found' };
 }
 
 function deleteItems(p) {
@@ -322,7 +346,6 @@ function deleteItems(p) {
   const idColIdx = headers.indexOf('Offer Item ID');
   const idsToDelete = new Set(p.offer_item_ids);
 
-  // Delete from bottom up to avoid index shifting problems
   let deletedCount = 0;
   for (let i = data.length - 1; i >= 1; i--) {
     if (idsToDelete.has(data[i][idColIdx])) {
@@ -348,11 +371,8 @@ function saveOffer(p) {
       return { success: true };
     }
   }
-  // If logic requires creating a new offer if not found, add it here.
   return { success: true }; 
 }
-
-// --- RATES STORAGE ---
 
 function getStoredSupplierRates() {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
