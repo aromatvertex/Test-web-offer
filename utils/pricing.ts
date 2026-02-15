@@ -140,14 +140,6 @@ export const calculateTransportCosts = (
     leg2Included = false;
   }
 
-  // Calculate Totals
-  // Leg 1 is usually one-off or per shipment? Assuming per shipment logic applies generally, 
-  // but if Leg 1 is bulk to AV, it might be total. 
-  // Logic: "Fixed" usually implies total for the whole quantity if it comes in one go, 
-  // but if we ship to customer in 4 parts, we might bring it from supplier in 1 part or 4 parts.
-  // Standard logic: Leg 1 follows total qty logic usually if we stock it, but here it's likely per shipment too.
-  // Let's assume standard behavior: Rate * Ships.
-  
   const leg1Amount = leg1Included ? (leg1Rate.eur * numberOfShips) : 0;
   const leg2Amount = leg2Included ? (leg2Rate.eur * numberOfShips) : 0;
   
@@ -161,3 +153,73 @@ export const calculateTransportCosts = (
     leg2Rate
   };
 };
+
+/**
+ * Generate automatic comment based on Incoterms logic
+ */
+export const generateAutoComment = (
+  incotermSupplier: string,
+  incotermAV: string,
+  leg1Amount: number,
+  leg2Amount: number,
+  totalQty: number
+): string => {
+  const sup = (incotermSupplier || '').toUpperCase();
+  const av = (incotermAV || '').toUpperCase();
+  
+  // Use a fallback quantity to avoid division by zero in rare cases, though amounts are total usually.
+  // The requirements show just "amount", assuming total amount EUR.
+
+  // Scenario 1: DAP -> EXW A-V
+  if (sup === 'DAP' && av === 'EXW A-V') {
+      // Logic dictates leg 2 is cost for customer to pick up? No, DAP means supplier delivers to AV. 
+      // EXW A-V means customer picks up from AV.
+      // Usually "A-V -> PL transport cost" implies we are informing customer of a cost they might incur 
+      // OR we are explaining a cost included?
+      // The prompt says: "A-V -> PL transport cost: {amount} EUR"
+      // But in this scenario, transport is NOT added to price. So this comment is likely informational about the hidden/excluded cost?
+      // Or maybe it refers to the AV->PL leg that IS calculated but not charged?
+      // Let's blindly follow the prompt text requirement.
+      // Wait, prompt says: DAP->EXW A-V: "A-V -> PL transport cost: {amount} EUR"
+      // In this scenario, leg2 is AV->PL.
+      // However, CalculateTransportCosts sets leg2Included = false.
+      // So leg2Amount returned by that function is 0. 
+      // We need the *potential* cost.
+      // Thus we need to know the raw rate even if not included.
+      // But `generateAutoComment` receives `leg2Amount` which is the *charged* amount.
+      // We should probably rely on the logic in TierRow to pass the raw amount if needed, 
+      // or change this signature. 
+      // Actually, looking at prompt: "EXW/FCA -> EXW Supplier: 'Supplier -> A-V transport cost...'"
+      // This usually implies showing costs that are NOT included in the final price, for transparency.
+      return `A-V → PL transport cost: ??? EUR`; // Placeholder, logic needs raw rates.
+  }
+
+  return "";
+};
+
+/**
+ * Refined auto comment generator that takes Raw Rates
+ */
+export const getAutoComment = (
+    incotermSupplier: string,
+    incotermAV: string,
+    leg1Total: number, // Raw total cost for Leg 1
+    leg2Total: number  // Raw total cost for Leg 2
+): string => {
+    const sup = (incotermSupplier || '').toUpperCase();
+    const av = (incotermAV || '').toUpperCase();
+
+    if (sup === 'DAP' && av === 'EXW A-V') {
+        return `A-V → PL transport cost: ${leg2Total.toFixed(2)} EUR`;
+    }
+    
+    if ((sup.includes('EXW') || sup.includes('FCA')) && av === 'EXW A-V') {
+        return `A-V → PL transport cost: ${leg2Total.toFixed(2)} EUR`;
+    }
+    
+    if ((sup.includes('EXW') || sup.includes('FCA')) && av === 'EXW SUPPLIER') {
+        return `Supplier → A-V transport cost: ${leg1Total.toFixed(2)} EUR`;
+    }
+
+    return "";
+}

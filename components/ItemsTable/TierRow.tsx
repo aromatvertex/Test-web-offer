@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Copy, Trash2, AlertTriangle } from 'lucide-react';
 import { OfferItem } from '../../types';
-import { calculateTransportCosts, calculateFinalPrice } from '../../utils/pricing';
+import { calculateTransportCosts, calculateFinalPrice, getTransportRate, getAutoComment } from '../../utils/pricing';
 import { useOffer } from '../../context/OfferContext';
-import { parseBoolean } from '../../utils/formatters';
+import { parseBoolean, formatDate } from '../../utils/formatters';
 
 interface Props {
   item: OfferItem;
@@ -11,10 +11,25 @@ interface Props {
 }
 
 const TierRow: React.FC<Props> = ({ item, supplierName }) => {
-  const { updateItem, duplicateItem, deleteItem, toggleItemIncluded, supplierRates } = useOffer();
+  const { updateItem, duplicateItem, deleteItem, toggleItemIncluded, supplierRates, t, language } = useOffer();
   
   // Calculate on fly
+  // We need raw rates for the comment logic, even if not included in price
+  // calculateTransportCosts returns included amounts. Let's calculate raw totals manually or update utils.
+  // For safety, let's just get the rates directly here for the comment to ensure accuracy.
   const transportCalc = calculateTransportCosts(item, supplierName, supplierRates);
+  
+  // Recalculate raw totals for comment logic (which shows potential costs even if excluded)
+  const totalQuantity = item['Actual Quantity'] || item['Quantity Unit From'] || 0;
+  const numberOfShips = item['Number Ships'] || 1;
+  const weightPerShip = numberOfShips > 0 ? totalQuantity / numberOfShips : 0;
+  
+  const rawLeg1Rate = getTransportRate(totalQuantity, supplierName, supplierRates);
+  const rawLeg2Rate = getTransportRate(weightPerShip, 'Aromat Vertex', supplierRates);
+  
+  const rawLeg1Total = rawLeg1Rate.eur * numberOfShips;
+  const rawLeg2Total = rawLeg2Rate.eur * numberOfShips;
+
   const markup = item['Markup %'];
   const purchPrice = parseFloat(item['Purchase Price']) || 0;
   
@@ -24,8 +39,6 @@ const TierRow: React.FC<Props> = ({ item, supplierName }) => {
      ? transportCalc.totalTrans / item['Actual Quantity'] 
      : 0;
 
-  // We should ideally use the backend's 'Final Price On Offer', but for interactivity we might want to recalc locally or wait for backend.
-  // The provided instructions imply calculations happen.
   const finalPrice = calculateFinalPrice(
       purchPrice, 
       markup * 100, 
@@ -36,18 +49,39 @@ const TierRow: React.FC<Props> = ({ item, supplierName }) => {
 
   const isIncluded = parseBoolean(item.Included);
 
+  // Auto-Comment Logic
+  useEffect(() => {
+    const suggestedComment = getAutoComment(
+        item['Incoterms Supplier'],
+        item['Incoterms A V'],
+        rawLeg1Total,
+        rawLeg2Total
+    );
+
+    // Update comment if it matches the pattern of an auto-generated comment OR if the field is empty.
+    // We want to avoid overwriting custom user notes unless the Incoterms scenario forces a specific disclaimer.
+    // The prompt implies strict "auto fill", so we will prioritize the generated comment if the scenario applies.
+    if (suggestedComment && item.Comment !== suggestedComment) {
+        handleChange('Comment', suggestedComment);
+    } else if (!suggestedComment && (item.Comment?.includes('transport cost') || item.Comment?.includes('->'))) {
+        // Clear comment if we switched to a scenario that has no auto-comment (e.g. DAP->DAP) 
+        // AND the previous comment looks like an auto-generated one.
+        handleChange('Comment', '');
+    }
+  }, [
+      item['Incoterms Supplier'], 
+      item['Incoterms A V'], 
+      rawLeg1Total, 
+      rawLeg2Total
+  ]);
+
   const handleChange = (field: keyof OfferItem, value: any) => {
-    // Mapping frontend actions to backend fields
-    // updateItem handles keys
     updateItem(item['Offer Item ID'], { [field]: value });
   };
 
   const handlePriceChange = (newFinalPrice: number) => {
-      // Reverse calc: Markup = ((Final - Transport) / Base) - 1
       if (purchPrice <= 0) return;
-      
       const newMarkup = ((newFinalPrice - transportPerUnit) / purchPrice) - 1;
-      // Backend expects decimal for markup e.g. 0.15
       updateItem(item['Offer Item ID'], { 'Markup %': newMarkup });
   };
 
@@ -74,7 +108,7 @@ const TierRow: React.FC<Props> = ({ item, supplierName }) => {
       {/* Purchase Details */}
       <td className="p-2 align-middle min-w-[140px]">
         <div className="flex flex-col">
-            <span className="text-[10px] font-bold text-slate-400 uppercase">Valid: {item['Price Validity']}</span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase">{t.valid} {formatDate(item['Price Validity'], language)}</span>
             <div className="font-semibold text-sm text-slate-700">
                 {item['Quantity Unit From']} {item.Unit} <span className="text-slate-300 mx-1">|</span> {purchPrice.toFixed(2)} {item['Purchase Currency']}
             </div>
@@ -162,7 +196,7 @@ const TierRow: React.FC<Props> = ({ item, supplierName }) => {
             <span className={`text-xs font-bold ${transportCalc.leg1Amount > 0 ? 'text-slate-700' : 'text-slate-300'}`}>
                 {transportCalc.leg1Rate.eur.toFixed(2)}
             </span>
-            <span className="text-[9px] text-slate-400">Fixed</span>
+            <span className="text-[9px] text-slate-400">{t.fixed}</span>
          </div>
       </td>
 
@@ -172,7 +206,7 @@ const TierRow: React.FC<Props> = ({ item, supplierName }) => {
             <span className={`text-xs font-bold ${transportCalc.leg2Amount > 0 ? 'text-slate-700' : 'text-slate-300'}`}>
                 {transportCalc.leg2Rate.eur.toFixed(2)}
             </span>
-            <span className="text-[9px] text-slate-400">Per Ship</span>
+            <span className="text-[9px] text-slate-400">{t.perShip}</span>
          </div>
       </td>
 
@@ -211,7 +245,7 @@ const TierRow: React.FC<Props> = ({ item, supplierName }) => {
             value={item.Comment}
             onChange={(e) => handleChange('Comment', e.target.value)}
             className="w-full h-8 min-h-[32px] px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:border-av-blue resize-y"
-            placeholder="Notes..."
+            placeholder={t.notes}
         />
       </td>
     </tr>

@@ -7,6 +7,7 @@ import {
   SupplierRates, 
   Config
 } from '../types';
+import { TRANSLATIONS, Language } from '../utils/translations';
 
 interface OfferContextType {
   // Data
@@ -21,8 +22,11 @@ interface OfferContextType {
   loading: boolean;
   saving: boolean;
   error: string | null;
+  language: Language;
+  t: typeof TRANSLATIONS['PL'];
   
   // Actions
+  setLanguage: (lang: Language) => void;
   loadOffer: (offerId?: string) => Promise<void>;
   addProduct: (productId: string) => Promise<void>;
   updateItem: (itemId: string, fields: Partial<OfferItem>) => Promise<void>;
@@ -71,6 +75,7 @@ export const OfferProvider: React.FC<OfferProviderProps> = ({
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [language, setLanguage] = useState<Language>('PL');
   
   // Keep track of mounted state to avoid setting state on unmounted component
   const isMounted = useRef(true);
@@ -343,6 +348,7 @@ export const OfferProvider: React.FC<OfferProviderProps> = ({
   const value: OfferContextType = {
     offer, items, products, suppliers, config, supplierRates,
     loading, saving, error,
+    language, setLanguage, t: TRANSLATIONS[language],
     loadOffer, addProduct, updateItem, toggleItemIncluded, duplicateItem, deleteItem, deleteItems, saveOffer,
     loadTransportRates, saveTransportRates,
     getProductById, getItemsByProduct, getFilterDate

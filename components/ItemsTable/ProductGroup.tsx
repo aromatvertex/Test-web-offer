@@ -11,7 +11,7 @@ interface Props {
 const ProductGroup: React.FC<Props> = ({ productId }) => {
   const [isOpen, setIsOpen] = useState(true);
   const [showExcluded, setShowExcluded] = useState(false);
-  const { getProductById, getItemsByProduct, deleteItems } = useOffer();
+  const { getProductById, getItemsByProduct, deleteItems, t } = useOffer();
 
   const product = getProductById(productId);
   const items = getItemsByProduct(productId);
@@ -65,20 +65,20 @@ const ProductGroup: React.FC<Props> = ({ productId }) => {
                 <table className="w-full min-w-[1200px]">
                     <thead>
                         <tr className="bg-slate-50 border-b border-gray-200">
-                            <th className="w-16 py-2 text-center text-[10px] font-bold text-slate-500 uppercase">Tools</th>
-                            <th className="w-40 py-2 text-left text-[10px] font-bold text-slate-500 uppercase pl-2">Details</th>
-                            <th className="w-24 py-2 text-left text-[10px] font-bold text-slate-500 uppercase">Markup %</th>
-                            <th className="w-20 py-2 text-left text-[10px] font-bold text-slate-500 uppercase">Curr</th>
-                            <th className="w-24 py-2 text-left text-[10px] font-bold text-slate-500 uppercase">Act Qty</th>
-                            <th className="w-16 py-2 text-left text-[10px] font-bold text-slate-500 uppercase">Ships</th>
-                            <th className="w-28 py-2 text-left text-[10px] font-bold text-slate-500 uppercase">Inc Supp</th>
-                            <th className="w-28 py-2 text-left text-[10px] font-bold text-slate-500 uppercase">Inc AV</th>
-                            <th className="w-24 py-2 text-right text-[10px] font-bold text-slate-500 uppercase pr-2">SUP→AV</th>
-                            <th className="w-24 py-2 text-right text-[10px] font-bold text-slate-500 uppercase pr-2">AV→PL</th>
-                            <th className="w-24 py-2 text-right text-[10px] font-bold text-slate-500 uppercase pr-2">Total Trans</th>
-                            <th className="w-28 py-2 text-right text-[10px] font-bold text-slate-500 uppercase pr-2 bg-slate-100">Price+Mark</th>
-                            <th className="w-28 py-2 text-right text-[10px] font-bold text-av-blue uppercase pr-2 bg-blue-50">Final Price</th>
-                            <th className="min-w-[150px] py-2 text-left text-[10px] font-bold text-slate-500 uppercase pl-2">Comment</th>
+                            <th className="w-16 py-2 text-center text-[10px] font-bold text-slate-500 uppercase">{t.tools}</th>
+                            <th className="w-40 py-2 text-left text-[10px] font-bold text-slate-500 uppercase pl-2">{t.details}</th>
+                            <th className="w-24 py-2 text-left text-[10px] font-bold text-slate-500 uppercase">{t.markup}</th>
+                            <th className="w-20 py-2 text-left text-[10px] font-bold text-slate-500 uppercase">{t.curr}</th>
+                            <th className="w-24 py-2 text-left text-[10px] font-bold text-slate-500 uppercase">{t.actQty}</th>
+                            <th className="w-16 py-2 text-left text-[10px] font-bold text-slate-500 uppercase">{t.ships}</th>
+                            <th className="w-28 py-2 text-left text-[10px] font-bold text-slate-500 uppercase">{t.incSupp}</th>
+                            <th className="w-28 py-2 text-left text-[10px] font-bold text-slate-500 uppercase">{t.incAv}</th>
+                            <th className="w-24 py-2 text-right text-[10px] font-bold text-slate-500 uppercase pr-2">{t.supAv}</th>
+                            <th className="w-24 py-2 text-right text-[10px] font-bold text-slate-500 uppercase pr-2">{t.avPl}</th>
+                            <th className="w-24 py-2 text-right text-[10px] font-bold text-slate-500 uppercase pr-2">{t.totalTrans}</th>
+                            <th className="w-28 py-2 text-right text-[10px] font-bold text-slate-500 uppercase pr-2 bg-slate-100">{t.priceMark}</th>
+                            <th className="w-28 py-2 text-right text-[10px] font-bold text-av-blue uppercase pr-2 bg-blue-50">{t.finalPrice}</th>
+                            <th className="min-w-[150px] py-2 text-left text-[10px] font-bold text-slate-500 uppercase pl-2">{t.comment}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -97,7 +97,7 @@ const ProductGroup: React.FC<Props> = ({ productId }) => {
                         onClick={() => setShowExcluded(!showExcluded)}
                     >
                          {showExcluded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-                         Excluded / Inactive Tiers ({excludedTiers.length})
+                         {t.excluded} ({excludedTiers.length})
                     </div>
                     {showExcluded && (
                         <div className="overflow-x-auto custom-scrollbar bg-slate-50 opacity-80">
